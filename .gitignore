@@ -27,4 +27,5 @@ yarn-error.log*
 next-env.d.ts
 
 # uploaded templates
-/public/uploads/
+/public/uploads/# local node portable 
+.node22/
