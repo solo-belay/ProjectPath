@@ -1,7 +1,6 @@
-import { mkdir, writeFile } from "fs/promises"
-import path from "path"
+import { put } from "@vercel/blob"
 
-export const runtime = "nodejs"
+export const runtime = "edge"
 export const dynamic = "force-dynamic"
 export const maxDuration = 30
 
@@ -14,6 +13,7 @@ export async function POST(request: Request) {
       return Response.json({ error: "No file provided" }, { status: 400 })
     }
 
+    // 25MB safety limit for uploads
     if (file.size > 25 * 1024 * 1024) {
       return Response.json({ error: "File too large. Limit is 25MB." }, { status: 413 })
     }
@@ -26,19 +26,24 @@ export async function POST(request: Request) {
 
     const baseName = slugify(originalName.replace(extension, "")) || "template"
     const safeName = `${baseName}-${Date.now()}${extension}`
+    const key = `uploads/${safeName}`
 
-    const uploadsDir = path.join(process.cwd(), "public", "uploads")
-    await mkdir(uploadsDir, { recursive: true })
-
-    const arrayBuffer = await file.arrayBuffer()
-    const buffer = Buffer.from(arrayBuffer)
-    const targetPath = path.join(uploadsDir, safeName)
-    await writeFile(targetPath, buffer)
+    // Store in Vercel Blob as public file. In Vercel prod, credentials are auto-injected.
+    // In local dev, set BLOB_READ_WRITE_TOKEN for write access if needed.
+    const uploaded = await put(key, file, {
+      access: "public",
+      addRandomSuffix: false,
+      contentType:
+        file.type ||
+        (extension === ".ppt"
+          ? "application/vnd.ms-powerpoint"
+          : "application/vnd.openxmlformats-officedocument.presentationml.presentation"),
+    })
 
     return Response.json(
       {
         slug: safeName,
-        url: `/uploads/${safeName}`,
+        url: uploaded.url, // public HTTPS URL suitable for Office Web Viewer
         message: "Template uploaded",
       },
       { status: 201, headers: { "Cache-Control": "no-store" } },
