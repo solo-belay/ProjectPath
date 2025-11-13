@@ -17,10 +17,11 @@ export default function HomePage() {
   const [templateUploading, setTemplateUploading] = useState(false)
   const [templateUploadError, setTemplateUploadError] = useState("")
   const [templateUploadSuccess, setTemplateUploadSuccess] = useState("")
-  const [uploadedTemplate, setUploadedTemplate] = useState<{ slug: string; url: string } | null>(null)
+  const [uploadedTemplate, setUploadedTemplate] = useState<{ slug: string; url: string; altUrl?: string; sdkUrl?: string } | null>(null)
   const uploadSectionRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const [presenting, setPresenting] = useState(false)
+  const [useAltUrl, setUseAltUrl] = useState(false)
   const [copied, setCopied] = useState<"viewer" | "file" | null>(null)
   const [origin, setOrigin] = useState<string>("")
 
@@ -53,10 +54,23 @@ export default function HomePage() {
   }, [origin])
 
   const pptUrl = useMemo(() => {
-    if (!uploadedTemplate?.slug) return ""
-    if (!baseUrl) return ""
+    if (!uploadedTemplate) return ""
+    // Allow user to choose alternate URL if available
+    if (useAltUrl && uploadedTemplate.altUrl && uploadedTemplate.altUrl.startsWith("http")) {
+      return uploadedTemplate.altUrl
+    }
+    // Prefer Blob public URL from upload API
+    if (uploadedTemplate.url && uploadedTemplate.url.startsWith("http")) {
+      return uploadedTemplate.url
+    }
+    // Fallback to SDK URL if provided
+    if (uploadedTemplate.sdkUrl && uploadedTemplate.sdkUrl.startsWith("http")) {
+      return uploadedTemplate.sdkUrl
+    }
+    // Legacy local path (dev only)
+    if (!baseUrl || !uploadedTemplate.slug) return ""
     return `${baseUrl}/uploads/${uploadedTemplate.slug}`
-  }, [baseUrl, uploadedTemplate])
+  }, [baseUrl, uploadedTemplate, useAltUrl])
 
   const officeEmbedUrl = useMemo(() => {
     if (!pptUrl) return ""
@@ -251,6 +265,7 @@ export default function HomePage() {
                   setPrompt("")
                   setRoadmapData(null)
                   setPresenting(false)
+                  setUseAltUrl(false)
                 }}
                 className="mb-8 text-muted-foreground hover:text-foreground transition-colors flex items-center gap-2"
               >
@@ -279,11 +294,11 @@ export default function HomePage() {
                     If the viewer shows “An error occurred”, ensure the file URL is publicly reachable over <b>HTTPS</b>.
                   </p>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                     <div>
-                      <div className="font-semibold">File URL</div>
+                      <div className="font-semibold">Active File URL {useAltUrl ? "(alternate)" : "(primary)"}</div>
                       <div className="break-all">{pptUrl || "—"}</div>
-                      <div className="mt-1">
+                      <div className="mt-1 flex gap-2">
                         <Button
                           type="button"
                           variant="outline"
@@ -293,8 +308,25 @@ export default function HomePage() {
                         >
                           {copied === "file" ? "Copied" : "Copy"}
                         </Button>
+                        {uploadedTemplate?.altUrl || uploadedTemplate?.sdkUrl ? (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setUseAltUrl((v) => !v)}
+                          >
+                            {useAltUrl ? "Use primary" : "Use alternate"}
+                          </Button>
+                        ) : null}
                       </div>
                     </div>
+
+                    {uploadedTemplate?.altUrl || uploadedTemplate?.sdkUrl ? (
+                      <div>
+                        <div className="font-semibold">Alternate URL</div>
+                        <div className="break-all">{uploadedTemplate?.altUrl || uploadedTemplate?.sdkUrl || "—"}</div>
+                      </div>
+                    ) : null}
 
                     <div>
                       <div className="font-semibold">Viewer URL</div>

@@ -1,6 +1,6 @@
 import { put } from "@vercel/blob"
 
-export const runtime = "edge"
+export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 export const maxDuration = 30
 
@@ -28,8 +28,11 @@ export async function POST(request: Request) {
     const safeName = `${baseName}-${Date.now()}${extension}`
     const key = `uploads/${safeName}`
 
+    // Optional token for local dev / previews if automatic credentials are not present.
+    const token = process.env.BLOB_READ_WRITE_TOKEN
+
     // Store in Vercel Blob as public file. In Vercel prod, credentials are auto-injected.
-    // In local dev, set BLOB_READ_WRITE_TOKEN for write access if needed.
+    // In local dev or some preview deployments, set BLOB_READ_WRITE_TOKEN in env, or pass via the token option.
     const uploaded = await put(key, file, {
       access: "public",
       addRandomSuffix: false,
@@ -38,12 +41,25 @@ export async function POST(request: Request) {
         (extension === ".ppt"
           ? "application/vnd.ms-powerpoint"
           : "application/vnd.openxmlformats-officedocument.presentationml.presentation"),
+      ...(token ? { token } : {}),
     })
+
+    // Prefer the SDK's returned public URL. If it contains query params, provide a clean variant too.
+    const sdkUrl = uploaded.url
+    let cleanUrl = sdkUrl
+    try {
+      const u = new URL(sdkUrl)
+      u.search = ""
+      cleanUrl = u.toString()
+    } catch {
+      // keep sdkUrl as-is
+    }
 
     return Response.json(
       {
         slug: safeName,
-        url: uploaded.url, // public HTTPS URL suitable for Office Web Viewer
+        url: sdkUrl,      // primary public HTTPS URL suitable for Office Web Viewer
+        altUrl: cleanUrl, // same URL without query params (fallback)
         message: "Template uploaded",
       },
       { status: 201, headers: { "Cache-Control": "no-store" } },
