@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ArrowRight, Loader2, Sparkles } from "lucide-react"
+import PresentRuntime from "@/components/present-runtime"
 
 const PUBLIC_BASE = process.env.NEXT_PUBLIC_PUBLIC_BASE_URL as string | undefined
 
@@ -21,7 +22,12 @@ export default function HomePage() {
   const uploadSectionRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const [presenting, setPresenting] = useState(false)
+  const [codePresenting, setCodePresenting] = useState(false)
   const [useAltUrl, setUseAltUrl] = useState(false)
+  const [animLoading, setAnimLoading] = useState(false)
+  const [animError, setAnimError] = useState("")
+  const [animSlides, setAnimSlides] = useState<any[] | null>(null)
+  const [animFallback, setAnimFallback] = useState<any[] | null>(null)
   const [copied, setCopied] = useState<"viewer" | "file" | null>(null)
   const [origin, setOrigin] = useState<string>("")
 
@@ -77,6 +83,35 @@ export default function HomePage() {
     const encoded = encodeURIComponent(pptUrl)
     return `https://view.officeapps.live.com/op/embed.aspx?src=${encoded}`
   }, [pptUrl])
+
+  const startCodePresent = async () => {
+    if (!pptUrl || !roadmapData) return
+    setAnimLoading(true)
+    setAnimError("")
+    try {
+      const res = await fetch("/api/ppt-animations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          templateUrl: pptUrl,
+          title: roadmapData.title,
+          phases: roadmapData.phases,
+        }),
+      })
+      if (!res.ok) {
+        const p = await res.json().catch(() => ({}))
+        throw new Error(p?.detail || p?.error || "Failed to prepare presentation")
+      }
+      const payload = await res.json()
+      setAnimSlides(payload?.slides || [])
+      setAnimFallback(payload?.fallbackTimeline || [])
+      setCodePresenting(true)
+    } catch (e: any) {
+      setAnimError(e?.message || "Failed to prepare presentation")
+    } finally {
+      setAnimLoading(false)
+    }
+  }
 
   const handleTemplateFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -159,6 +194,7 @@ export default function HomePage() {
       const data = await response.json()
       setRoadmapData(data)
       setSubmitted(true)
+      startCodePresent()
     } catch (err: any) {
       setError(err?.message || "Failed to generate roadmap. Please try again.")
       console.error(err)
@@ -185,7 +221,7 @@ export default function HomePage() {
               </div>
               <h1 className="text-5xl md:text-6xl font-bold mb-6 text-balance">ProjectPath</h1>
               <p className="text-xl text-muted-foreground text-balance">
-                Your uploaded PPT template will be used directly for the in-page animated preview.
+                Your roadmap will be presented as code using your PPT template’s motion and styling.
               </p>
             </div>
           )}
@@ -265,27 +301,36 @@ export default function HomePage() {
                   setPrompt("")
                   setRoadmapData(null)
                   setPresenting(false)
+                  setCodePresenting(false)
                   setUseAltUrl(false)
+                  setAnimSlides(null)
+                  setAnimFallback(null)
+                  setAnimError("")
+                  setAnimLoading(false)
                 }}
                 className="mb-8 text-muted-foreground hover:text-foreground transition-colors flex items-center gap-2"
               >
                 ← Back
               </button>
 
-              {/* Present using the uploaded PPT template (in-page, with PPT animations via Office Web Viewer) */}
+              {/* Present controls */}
               <div className="w-full bg-background border border-border/50 rounded-lg overflow-hidden p-4 space-y-3">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
                   <div className="text-sm text-muted-foreground">
-                    Use your uploaded PPT template for presentation on this page.
+                    Present your roadmap with your PPT template on this page.
                   </div>
-                  <Button
-                    type="button"
-                    onClick={() => setPresenting(true)}
-                    disabled={!officeEmbedUrl}
-                    className="bg-primary text-primary-foreground"
-                  >
-                    Present
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      onClick={startCodePresent}
+                      disabled={!pptUrl || animLoading || !roadmapData}
+                      className="bg-primary text-primary-foreground"
+                      title="Replay the template’s animation timeline as code with per-phase focus"
+                    >
+                      {animLoading ? "Preparing…" : "Code Present"}
+                    </Button>
+                    {/* View PPT (native iframe) intentionally removed to enforce code-based presentation */}
+                  </div>
                 </div>
 
                 {/* Diagnostics to resolve Office Viewer “An error occurred” */}
@@ -360,22 +405,20 @@ export default function HomePage() {
                   </p>
                 )}
 
-                {presenting && (
-                  <div className="w-full h-[70vh] rounded-lg overflow-hidden">
-                    {!officeEmbedUrl ? (
-                      <div className="w-full h-full flex items-center justify-center text-muted-foreground">
-                        Preparing viewer…
-                      </div>
-                    ) : (
-                      <iframe
-                        title="PowerPoint Web Viewer"
-                        src={officeEmbedUrl}
-                        className="w-full h-full border-0"
-                        allowFullScreen
+                {codePresenting ? (
+                  <div className="w-full">
+                    {roadmapData ? (
+                      <PresentRuntime
+                        title={roadmapData.title}
+                        phases={roadmapData.phases || []}
+                        slides={animSlides || []}
+                        fallbackTimeline={animFallback || []}
                       />
-                    )}
+                    ) : null}
                   </div>
-                )}
+                ) : null}
+
+                {/* PPT iframe section removed. Presentation runs as code via PresentRuntime. */}
               </div>
             </div>
           )}

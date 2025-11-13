@@ -55,11 +55,15 @@ export async function POST(request: Request) {
       // keep sdkUrl as-is
     }
 
+    // Deterministic public Blob domain that works for third-parties (Office Web Viewer)
+    const publicUrl = `https://public.blob.vercel-storage.com/${encodeURIComponent(key)}`
+
     return Response.json(
       {
         slug: safeName,
-        url: sdkUrl,      // primary public HTTPS URL suitable for Office Web Viewer
-        altUrl: cleanUrl, // same URL without query params (fallback)
+        url: publicUrl,   // primary deterministic public URL for third-party access
+        altUrl: sdkUrl,   // SDK public URL (may include query params)
+        cleanUrl,         // SDK URL without query params (debug)
         message: "Template uploaded",
       },
       { status: 201, headers: { "Cache-Control": "no-store" } },
